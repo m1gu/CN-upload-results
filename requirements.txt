@@ -1,0 +1,18 @@
+# Core runtime
+httpx>=0.27
+pandas>=2.2
+openpyxl>=3.1
+pydantic>=2.7
+pydantic-settings>=2.2
+python-dotenv>=1.0
+typer>=0.9
+tenacity>=8.2
+PySide6>=6.7
+supabase>=2.3
+postgrest>=0.10
+
+# Tooling and tests
+pytest>=8.2
+pytest-asyncio>=0.23
+black>=24.4
+ruff>=0.5
