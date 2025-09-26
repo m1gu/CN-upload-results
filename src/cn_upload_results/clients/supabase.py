@@ -51,9 +51,13 @@ class SupabaseClient:
 
         payload = {
             "sample_id": sample.sample_id,
+            "base_sample_id": sample.base_sample_id,
+            "test_index": sample.test_index,
+            "column_header": sample.column_header,
             "run_date": run.run_date.isoformat(),
             "batch_numbers": sample.batch_numbers or run.batch_numbers,
             "components": sample.components,
+            "area_results": sample.area_results,
             "sample_mass_mg": sample.sample_mass_mg,
             "dilution": sample.dilution,
             "serving_mass_g": sample.serving_mass_g,

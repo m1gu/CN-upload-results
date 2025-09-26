@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import HttpUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,17 +21,30 @@ class AppSettings(BaseSettings):
 
     environment: Literal["sandbox", "production"] = "sandbox"
     qbench_base_url: HttpUrl = "https://sandbox.qbench.net/api"
-    qbench_api_key: str = ""
+    qbench_token_url: HttpUrl | None = None
+    qbench_client_id: str = ""
+    qbench_client_secret: str = ""
     supabase_url: HttpUrl
     supabase_anon_key: str
     supabase_service_role_key: str
+
+    @property
+    def qbench_token_endpoint(self) -> str:
+        """Compute the OAuth token endpoint from the provided base URL."""
+
+        if self.qbench_token_url:
+            return str(self.qbench_token_url)
+
+        parsed = urlparse(str(self.qbench_base_url))
+        base = parsed._replace(path="", params="", query="", fragment="")
+        host = base.geturl().rstrip("/")
+        return f"{host}/oauth/token"
 
     @property
     def is_production(self) -> bool:
         """Boolean helper for environment-aware logic."""
 
         return self.environment == "production"
-
 
 
 @lru_cache

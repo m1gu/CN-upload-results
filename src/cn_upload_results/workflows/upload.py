@@ -24,7 +24,9 @@ def run_upload(excel_path: Path) -> WorkbookExtraction:
 
     with QBenchClient(
         base_url=str(settings.qbench_base_url),
-        api_key=settings.qbench_api_key,
+        client_id=settings.qbench_client_id,
+        client_secret=settings.qbench_client_secret,
+        token_url=settings.qbench_token_endpoint,
     ) as qbench, SupabaseClient(
         url=str(settings.supabase_url),
         service_role_key=settings.supabase_service_role_key,

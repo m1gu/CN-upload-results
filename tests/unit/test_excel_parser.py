@@ -5,22 +5,33 @@ from datetime import date
 import pandas as pd
 
 from cn_upload_results.domain.models import COMPONENT_ORDER
-from cn_upload_results.parsers.excel import parse_workbook
+from cn_upload_results.parsers.excel import (
+    AREA_RESULT_ROW_OFFSET,
+    COMPONENT_ROW_OFFSET,
+    DILUTION_ROW,
+    SAMPLE_MASS_ROW,
+    SERVING_MASS_ROW,
+    SERVINGS_PER_PACKAGE_ROW,
+    parse_workbook,
+)
 
 
 def test_parse_workbook_extracts_metadata_and_samples(tmp_path):
     path = tmp_path / "20250101_8561_8545 run.xlsx"
 
-    sample_column = ["14956"]
-    for index, _component in enumerate(COMPONENT_ORDER):
-        sample_column.append(float(index))
+    column_values: dict[int, object] = {0: "14956"}
 
-    additional_rows = 26 - len(sample_column)
-    sample_column.extend([None] * max(additional_rows, 0))
-    sample_column[22] = 100.0
-    sample_column[23] = 2.0
-    sample_column[24] = 5.0
-    sample_column[25] = 10.0
+    for offset, component in enumerate(COMPONENT_ORDER):
+        column_values[COMPONENT_ROW_OFFSET + offset] = float(offset)
+        column_values[AREA_RESULT_ROW_OFFSET + offset] = float(offset * 10)
+
+    column_values[SAMPLE_MASS_ROW] = 100.0
+    column_values[DILUTION_ROW] = 2.0
+    column_values[SERVING_MASS_ROW] = 5.0
+    column_values[SERVINGS_PER_PACKAGE_ROW] = 10.0
+
+    max_row_index = max(column_values) + 1
+    sample_column = [column_values.get(index) for index in range(max_row_index)]
 
     dup_column = ["Dup 14956"] + [None] * (len(sample_column) - 1)
 
@@ -43,8 +54,13 @@ def test_parse_workbook_extracts_metadata_and_samples(tmp_path):
     assert len(extraction.samples) == 1
     sample = extraction.samples[0]
     assert sample.sample_id == "14956"
+    assert sample.base_sample_id == "14956"
+    assert sample.test_index == 0
+    assert sample.column_header == "14956"
+
     for index, component in enumerate(COMPONENT_ORDER):
         assert sample.components[component] == float(index)
+        assert sample.area_results[component] == float(index * 10)
     assert sample.sample_mass_mg == 100.0
     assert sample.dilution == 2.0
     assert sample.serving_mass_g == 5.0

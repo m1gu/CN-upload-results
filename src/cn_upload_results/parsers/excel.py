@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import Dict, Iterable, List, Sequence
 
 import pandas as pd
 
 from cn_upload_results.domain.models import (
+    AREA_RESULT_SUFFIX,
     COMPONENT_ORDER,
     RunMetadata,
     SampleQuantification,
@@ -22,6 +24,7 @@ RESULTS_SHEET = "Results Transfer"
 BATCH_SHEET = "Blank Spike Recovery"
 BATCH_COLUMN_STEP = 2
 COMPONENT_ROW_OFFSET = 1  # zero-based index for first component row
+AREA_RESULT_ROW_OFFSET = 28  # zero-based index (row 29 in Excel)
 
 SAMPLE_MASS_ROW = 22  # zero-based index (row 23 in Excel)
 DILUTION_ROW = 23  # zero-based index (row 24 in Excel)
@@ -99,27 +102,31 @@ def _extract_batches_from_sheet(excel: pd.ExcelFile) -> List[str]:
 def _parse_samples(frame: pd.DataFrame, batch_numbers: Sequence[str]) -> List[SampleQuantification]:
     header = frame.iloc[0].astype(str).str.strip()
     samples: List[SampleQuantification] = []
+    test_counters: Dict[str, int] = defaultdict(int)
 
     for column_index, raw_header in enumerate(header):
-        header_value = raw_header.strip() if raw_header else ""
-        if not header_value or header_value.lower() == "nan":
-            continue
-        if header_value.lower().startswith(("dup", "bs")):
-            continue
-        if not header_value[0].isdigit():
+        if _should_skip_header(raw_header):
             continue
 
-        sample_id = _normalize_sample_id(header_value)
+        normalized = _normalize_sample_header(raw_header)
+        if not normalized:
+            continue
+
+        base_sample_id = _extract_base_sample_id(normalized)
+        test_index = test_counters[base_sample_id]
+        test_counters[base_sample_id] += 1
+
         column = frame.iloc[:, column_index]
-        components = {}
-        for offset, component in enumerate(COMPONENT_ORDER):
-            row_index = COMPONENT_ROW_OFFSET + offset
-            value = _safe_get(column, row_index)
-            components[component] = _coerce_number(value)
+        components = _extract_components(column)
+        area_results = _extract_area_results(column)
 
         sample = SampleQuantification(
-            sample_id=sample_id,
+            sample_id=normalized,
+            base_sample_id=base_sample_id,
+            test_index=test_index,
+            column_header=_format_column_header(raw_header),
             components=components,
+            area_results=area_results,
             sample_mass_mg=_coerce_number(_safe_get(column, SAMPLE_MASS_ROW)),
             dilution=_coerce_number(_safe_get(column, DILUTION_ROW)),
             serving_mass_g=_coerce_number(_safe_get(column, SERVING_MASS_ROW)),
@@ -130,8 +137,44 @@ def _parse_samples(frame: pd.DataFrame, batch_numbers: Sequence[str]) -> List[Sa
     return samples
 
 
-def _normalize_sample_id(value: str) -> str:
-    text = value.strip()
+def _extract_components(column: pd.Series) -> Dict[str, float | None]:
+    return {
+        component: _coerce_number(_safe_get(column, COMPONENT_ROW_OFFSET + offset))
+        for offset, component in enumerate(COMPONENT_ORDER)
+    }
+
+
+def _extract_area_results(column: pd.Series) -> Dict[str, float | None]:
+    return {
+        component: _coerce_number(_safe_get(column, AREA_RESULT_ROW_OFFSET + offset))
+        for offset, component in enumerate(COMPONENT_ORDER)
+    }
+
+
+def _should_skip_header(value: object) -> bool:
+    if value is None:
+        return True
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return True
+    lowered = text.lower()
+    if lowered.startswith(("dup", "blank", "bs", "low")):
+        return True
+    if not any(char.isdigit() for char in text):
+        return True
+    return False
+
+
+def _normalize_sample_header(value: object) -> str | None:
+    text = str(value).strip()
+    if not text:
+        return None
+
+    replacements = text.replace(" ", "")
+    match = re.match(r"(\d+(?:-\d+)?)", replacements)
+    if match:
+        return match.group(1)
+
     if text.endswith(".0") and text[:-2].isdigit():
         return text[:-2]
     if text.replace(".", "", 1).isdigit() and text.count(".") == 1:
@@ -139,6 +182,21 @@ def _normalize_sample_id(value: str) -> str:
         if fractional == "0":
             return integer
     return text
+
+
+def _format_column_header(value: object) -> str:
+    text = str(value).strip()
+    if text.endswith(".0") and text[:-2].isdigit():
+        return text[:-2]
+    return text
+
+
+def _extract_base_sample_id(sample_id: str) -> str:
+    if "-" in sample_id:
+        prefix, _, remainder = sample_id.partition("-")
+        if prefix.isdigit() and remainder.isdigit():
+            return prefix
+    return sample_id
 
 
 def _sanitize_batch_token(token: str) -> str | None:
@@ -180,3 +238,5 @@ def _deduplicate_sequence(values: Iterable[str]) -> List[str]:
             seen.add(value)
             result.append(value)
     return result
+
+
