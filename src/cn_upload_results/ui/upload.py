@@ -28,9 +28,12 @@ class UploadWidget(QWidget):
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 24)
+        layout.setSpacing(18)
 
         status = QLabel("Seleccione un archivo Excel.", self)
         status.setWordWrap(True)
+        status.setProperty("role", "hint")
         layout.addWidget(status)
         self._status_label = status
 

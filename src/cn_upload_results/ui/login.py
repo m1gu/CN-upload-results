@@ -31,19 +31,30 @@ class LoginDialog(QDialog):
     def _setup_ui(self) -> None:
         self.setWindowTitle("Iniciar sesion")
         self.setModal(True)
+        self.resize(420, 260)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 24)
+        layout.setSpacing(20)
+
+        title = QLabel("<b>Acceso</b>", self)
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
         form = QFormLayout()
+        form.setSpacing(16)
 
         email_input = QLineEdit(self)
-        email_input.setPlaceholderText("correo@empresa.com")
+        email_input.setPlaceholderText("Email")
         email_input.setClearButtonEnabled(True)
+        email_input.setText("mrodriguezegues@gmail.com")
         form.addRow("Email", email_input)
         self._email_input = email_input
 
         password_input = QLineEdit(self)
         password_input.setEchoMode(QLineEdit.Password)
         password_input.setPlaceholderText("Contrasena")
+        password_input.setText("12345678")
         form.addRow("Password", password_input)
         self._password_input = password_input
 
@@ -51,18 +62,19 @@ class LoginDialog(QDialog):
 
         status_label = QLabel("Ingrese sus credenciales para continuar", self)
         status_label.setWordWrap(True)
+        status_label.setProperty("role", "hint")
         layout.addWidget(status_label)
         self._status = status_label
 
-        button_box = QDialogButtonBox(Qt.Horizontal, self)
-        login_button = QPushButton("Entrar", self)
+        buttons = QDialogButtonBox(Qt.Horizontal, self)
+        login_button = QPushButton("Ingresar", self)
         login_button.clicked.connect(self._handle_submit)
-        button_box.addButton(login_button, QDialogButtonBox.AcceptRole)
+        buttons.addButton(login_button, QDialogButtonBox.AcceptRole)
         cancel_button = QPushButton("Cancelar", self)
         cancel_button.clicked.connect(self.reject)
-        button_box.addButton(cancel_button, QDialogButtonBox.RejectRole)
+        buttons.addButton(cancel_button, QDialogButtonBox.RejectRole)
 
-        layout.addWidget(button_box)
+        layout.addWidget(buttons)
 
     def _handle_submit(self) -> None:
         if not self._email_input or not self._password_input:

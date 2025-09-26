@@ -36,11 +36,11 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
+pip install -e .
 ```
 
 ## Flujo de Trabajo
-- CLI con Typer: `python -m cn_upload_results upload <archivo.xlsx>`
-- UI en PySide6: `python -m cn_upload_results ui` (requiere Supabase configured).
+- Interfaz PySide6: `python -m cn_upload_results` abre la aplicacion (requiere Supabase configurado).
 - Parser de Excel extrae fecha, batch numbers y componentes (CBDVA... CBT).
 - Clientes dedicados para QBench (HTTP) y Supabase (auth + logging).
 - Tests en `tests/unit` validan las reglas principales del parser.

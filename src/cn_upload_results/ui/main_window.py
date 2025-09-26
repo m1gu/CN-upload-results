@@ -28,7 +28,7 @@ class MainWindow(QMainWindow):
         self._upload_widget.process_requested.connect(self._on_process_requested)
         self.setCentralWidget(self._upload_widget)
         self.setWindowTitle("QBench CN Uploader")
-        self.resize(600, 400)
+        self.resize(640, 480)
 
     def _on_file_selected(self, path: Path) -> None:
         self._current_file = path

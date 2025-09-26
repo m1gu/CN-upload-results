@@ -1,7 +1,5 @@
-"""Preview dialog to review parsed data before publishing."""
+"""Preview dialog to review parsed data before publishing.""" 
 from __future__ import annotations
-
-from typing import Optional
 
 from PySide6.QtWidgets import (
     QDialog,
@@ -22,18 +20,26 @@ class PreviewDialog(QDialog):
         super().__init__(parent)
         self._extraction = extraction
         self.setWindowTitle("Previsualizar datos")
-        self.resize(800, 600)
+        self.resize(820, 600)
         self._setup_ui()
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 24)
+        layout.setSpacing(18)
+
         summary = QLabel(
             f"Run {self._extraction.metadata.run_date} - {len(self._extraction.samples)} muestras",
             self,
         )
+        summary.setProperty("role", "hint")
         layout.addWidget(summary)
 
         table = QTableWidget(self)
+        table.setAlternatingRowColors(True)
+        table.setShowGrid(False)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setStretchLastSection(True)
         table.setColumnCount(5)
         table.setHorizontalHeaderLabels(
             [

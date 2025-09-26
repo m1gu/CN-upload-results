@@ -10,14 +10,17 @@ from cn_upload_results.config.settings import get_settings
 from cn_upload_results.ui.auth import SupabaseAuthService
 from cn_upload_results.ui.login import LoginDialog
 from cn_upload_results.ui.main_window import MainWindow
+from cn_upload_results.ui.style import apply_theme
 
 LOGGER = logging.getLogger(__name__)
+
 
 
 def run_ui() -> None:
     """Launch the desktop workflow."""
 
     app = QApplication.instance() or QApplication(sys.argv)
+    apply_theme(app)
     settings = get_settings()
 
     auth_service = SupabaseAuthService(
