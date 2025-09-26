@@ -1,11 +1,17 @@
 """Thin client wrapper for QBench API calls."""
 from __future__ import annotations
 
+import base64
+import hmac
+import json
+import logging
+import time
+from hashlib import sha256
 from typing import Any, Dict, Optional
 
 import httpx
 
-from cn_upload_results.domain.models import RunMetadata, SampleQuantification
+LOGGER = logging.getLogger(__name__)
 
 
 class QBenchClient:
@@ -48,20 +54,39 @@ class QBenchClient:
 
         self._client.close()
 
-    def fetch_sample(self, sample_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve sample info if it exists."""
+    def fetch_sample(self, sample_id: str, include_tests: bool = False) -> Optional[Dict[str, Any]]:
+        """Retrieve a sample, optionally including its tests."""
 
-        response = self._request("GET", f"/samples/{sample_id}")
+        params = {"include": "tests"} if include_tests else None
+        response = self._request("GET", f"/qbench/api/v1/sample/{sample_id}", params=params)
         if response.status_code == httpx.codes.NOT_FOUND:
             return None
         response.raise_for_status()
         return response.json()
 
-    def upsert_results(self, sample: SampleQuantification, run: RunMetadata) -> Dict[str, Any]:
-        """Create or update analytical results for a sample."""
+    def update_test_worksheet(
+        self,
+        test_id: str | int,
+        *,
+        data: Optional[Dict[str, Any]] = None,
+        worksheet_processed: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """Update worksheet fields for a given test."""
 
-        payload = _build_payload(sample, run)
-        response = self._request("POST", "/sample-results", json=payload)
+        if data is None and worksheet_processed is None:
+            raise ValueError("At least one of data or worksheet_processed must be provided")
+
+        payload: Dict[str, Any] = {}
+        if data:
+            payload["data"] = data
+        if worksheet_processed is not None:
+            payload["worksheet_processed"] = worksheet_processed
+
+        response = self._request(
+            "PATCH",
+            f"/qbench/api/v1/test/{test_id}/worksheet",
+            json=payload,
+        )
         response.raise_for_status()
         return response.json()
 
@@ -73,20 +98,28 @@ class QBenchClient:
         return response
 
     def _authenticate(self) -> None:
-        """Obtain an access token using the client credentials grant."""
+        """Obtain an access token using the JWT bearer grant flow."""
 
         token_endpoint = self._resolve_token_endpoint()
-        auth = httpx.BasicAuth(self._client_id, self._client_secret)
+        assertion = _build_jwt_assertion(self._client_id, self._client_secret)
+        payload = {
+            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            "assertion": assertion,
+        }
+
         response = httpx.post(
             token_endpoint,
-            data={"grant_type": "client_credentials"},
-            auth=auth,
+            data=payload,
             headers={
                 "Accept": "application/json",
                 "Content-Type": "application/x-www-form-urlencoded",
             },
             timeout=self._timeout,
         )
+        if response.status_code >= 400:
+            LOGGER.error(
+                "Failed to obtain token from %s: %s", token_endpoint, response.text
+            )
         response.raise_for_status()
         token_payload = response.json()
         access_token = token_payload.get("access_token")
@@ -104,28 +137,25 @@ class QBenchClient:
             host = base[: -len("/api")]
         else:
             host = base
-        return f"{host.rstrip('/')}/oauth/token"
+        return f"{host}/oauth/token"
 
 
-def _build_payload(sample: SampleQuantification, run: RunMetadata) -> Dict[str, Any]:
-    components = [
-        {
-            "analyte": name,
-            "value": value,
-        }
-        for name, value in sample.components.items()
-        if value is not None
-    ]
-    return {
-        "sample_id": sample.sample_id,
-        "run_date": run.run_date.isoformat(),
-        "batch_numbers": sample.batch_numbers or run.batch_numbers,
-        "measurements": components,
-        "metadata": {
-            "sample_mass_mg": sample.sample_mass_mg,
-            "dilution": sample.dilution,
-            "serving_mass_g": sample.serving_mass_g,
-            "servings_per_package": sample.servings_per_package,
-            "source_file": run.source_filename,
-        },
+def _build_jwt_assertion(client_id: str, client_secret: str) -> str:
+    header = {"alg": "HS256", "typ": "JWT"}
+    now = int(time.time())
+    payload = {
+        "sub": client_id,
+        "iat": now,
+        "exp": now + 3600,
     }
+
+    header_segment = _base64url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8"))
+    payload_segment = _base64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    signing_input = b".".join([header_segment, payload_segment])
+    signature = hmac.new(client_secret.encode("utf-8"), signing_input, sha256).digest()
+    signature_segment = _base64url_encode(signature)
+    return b".".join([header_segment, payload_segment, signature_segment]).decode("ascii")
+
+
+def _base64url_encode(value: bytes) -> bytes:
+    return base64.urlsafe_b64encode(value).rstrip(b"=")

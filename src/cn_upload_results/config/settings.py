@@ -1,7 +1,6 @@
 """Application settings via environment variables."""
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -47,7 +46,6 @@ class AppSettings(BaseSettings):
         return self.environment == "production"
 
 
-@lru_cache
 def get_settings() -> AppSettings:
     """Factory that loads settings with environment overrides."""
 
