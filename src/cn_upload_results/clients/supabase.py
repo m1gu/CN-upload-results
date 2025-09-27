@@ -40,6 +40,11 @@ class SupabaseClient:
         )
         return response.model_dump() if hasattr(response, "model_dump") else response
 
+    def store_run_record(self, record: Dict[str, Any]) -> None:
+        """Persist a full run record into the cn_upload_results table."""
+
+        self._client.table("cn_upload_results").insert(record).execute()
+
     def log_sample_upload(
         self,
         *,

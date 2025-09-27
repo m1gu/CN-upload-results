@@ -20,9 +20,13 @@ from cn_upload_results.ui.auth import SupabaseAuthService
 class LoginDialog(QDialog):
     """Collects credentials and performs Supabase authentication."""
 
+    authenticated_email: Optional[str] = None
+
+
     def __init__(self, auth_service: SupabaseAuthService, parent=None) -> None:
         super().__init__(parent)
         self._auth_service = auth_service
+        self.authenticated_email = None
         self._status: Optional[QLabel] = None
         self._email_input: Optional[QLineEdit] = None
         self._password_input: Optional[QLineEdit] = None
@@ -92,8 +96,13 @@ class LoginDialog(QDialog):
             self._set_status(f"Error de autenticacion: {exc}")
             return
 
+        self.authenticated_email = email
         self.accept()
 
     def _set_status(self, message: str) -> None:
         if self._status:
             self._status.setText(message)
+
+    @property
+    def authenticated_user(self) -> Optional[str]:
+        return self.authenticated_email

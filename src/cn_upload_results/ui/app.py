@@ -32,6 +32,6 @@ def run_ui() -> None:
         LOGGER.info("Login cancelled; exiting UI")
         return
 
-    window = MainWindow(settings=settings)
+    window = MainWindow(settings=settings, user_email=login.authenticated_user)
     window.show()
     app.exec()
