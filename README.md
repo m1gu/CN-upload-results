@@ -66,8 +66,3 @@ tests/unit/        # pytest
 
 Incluye RLS “authenticated access” para lectura/escritura de usuarios logueados.
 
-## Próximos pasos sugeridos
-1. Incrementar cobertura con pruebas end-to-end (mock de API).
-2. Configurar CI (lint + pytest).
-3. Asegurar logging estructurado y captura de errores.
-4. Extender Supabase con vistas para dashboards Power BI.
