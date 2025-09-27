@@ -32,12 +32,14 @@ def test_parse_workbook_extracts_metadata_and_samples(tmp_path):
 
     max_row_index = max(column_values) + 1
     sample_column = [column_values.get(index) for index in range(max_row_index)]
+    bs_column = ["BS-Con-8398"] + [None] * (len(sample_column) - 1)
 
     dup_column = ["Dup 14956"] + [None] * (len(sample_column) - 1)
 
     results_df = pd.DataFrame({
-        "A": sample_column,
-        "B": dup_column,
+        "A": bs_column,
+        "B": sample_column,
+        "C": dup_column,
     })
 
     batch_df = pd.DataFrame([["1234", None, "5678"]])
@@ -49,7 +51,8 @@ def test_parse_workbook_extracts_metadata_and_samples(tmp_path):
     extraction = parse_workbook(path)
 
     assert extraction.metadata.run_date == date(2025, 1, 1)
-    assert extraction.metadata.batch_numbers == ["8561", "8545", "1234", "5678"]
+    assert extraction.metadata.batch_numbers == ["8561", "8545", "1234", "5678", "8398"]
+    assert extraction.metadata.batch_sample_map == {"8398": ["14956"]}
 
     assert len(extraction.samples) == 1
     sample = extraction.samples[0]
@@ -57,6 +60,7 @@ def test_parse_workbook_extracts_metadata_and_samples(tmp_path):
     assert sample.base_sample_id == "14956"
     assert sample.test_index == 0
     assert sample.column_header == "14956"
+    assert sample.batch_numbers == ["8398"]
 
     for index, component in enumerate(COMPONENT_ORDER):
         assert sample.components[component] == float(index)

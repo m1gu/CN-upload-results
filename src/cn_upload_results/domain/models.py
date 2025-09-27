@@ -36,6 +36,7 @@ class RunMetadata:
 
     run_date: date
     batch_numbers: List[str]
+    batch_sample_map: Dict[str, List[str]]
     source_filename: str
 
 

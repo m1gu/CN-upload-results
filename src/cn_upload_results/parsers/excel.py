@@ -36,19 +36,21 @@ def parse_workbook(path: Path) -> WorkbookExtraction:
     """Parse workbook into structured domain objects."""
 
     excel = pd.ExcelFile(path)
-    metadata = _build_metadata(path, excel)
     results_df = excel.parse(RESULTS_SHEET, header=None)
-    samples = _parse_samples(results_df, metadata.batch_numbers)
+    metadata = _build_metadata(path, excel, results_df)
+    samples = _parse_samples(results_df, metadata.batch_sample_map, metadata.batch_numbers)
     return WorkbookExtraction(metadata=metadata, samples=samples)
 
 
-def _build_metadata(path: Path, excel: pd.ExcelFile) -> RunMetadata:
+def _build_metadata(path: Path, excel: pd.ExcelFile, results_df: pd.DataFrame) -> RunMetadata:
     run_date, file_batches = _extract_from_filename(path)
     sheet_batches = _extract_batches_from_sheet(excel)
-    batch_numbers = _deduplicate_sequence([*file_batches, *sheet_batches])
+    batch_assignments = _extract_batch_assignments_from_results(results_df)
+    batch_numbers = _deduplicate_sequence([*file_batches, *sheet_batches, *batch_assignments])
     return RunMetadata(
         run_date=run_date,
         batch_numbers=batch_numbers,
+        batch_sample_map=batch_assignments,
         source_filename=path.name,
     )
 
@@ -99,10 +101,56 @@ def _extract_batches_from_sheet(excel: pd.ExcelFile) -> List[str]:
     return batches
 
 
-def _parse_samples(frame: pd.DataFrame, batch_numbers: Sequence[str]) -> List[SampleQuantification]:
+def _extract_batch_assignments_from_results(frame: pd.DataFrame) -> Dict[str, List[str]]:
+    if frame.empty:
+        return {}
+
+    header = frame.iloc[0]
+    assignments: Dict[str, List[str]] = {}
+    current_batch: str | None = None
+    batch_pattern = re.compile(r"^BS[^0-9]*(\d+)", re.IGNORECASE)
+
+    for raw in header:
+        if pd.isna(raw):
+            continue
+        token = str(raw).strip()
+        if not token:
+            continue
+
+        compact = re.sub(r"\s+", "", token)
+        match = batch_pattern.match(compact)
+        if match:
+            current_batch = match.group(1)
+            assignments.setdefault(current_batch, [])
+            continue
+
+        if _should_skip_header(token):
+            continue
+
+        if current_batch is None:
+            continue
+
+        sample_id = _normalize_sample_header(token)
+        if not sample_id:
+            continue
+
+        bucket = assignments.setdefault(current_batch, [])
+        if sample_id not in bucket:
+            bucket.append(sample_id)
+
+    return {batch: samples for batch, samples in assignments.items() if samples}
+
+
+def _parse_samples(
+    frame: pd.DataFrame, batch_assignments: Dict[str, List[str]], batch_numbers: Sequence[str]
+) -> List[SampleQuantification]:
     header = frame.iloc[0].astype(str).str.strip()
     samples: List[SampleQuantification] = []
     test_counters: Dict[str, int] = defaultdict(int)
+    sample_batch_lookup: Dict[str, List[str]] = defaultdict(list)
+    for batch, sample_ids in batch_assignments.items():
+        for sample_id in sample_ids:
+            sample_batch_lookup[sample_id].append(batch)
 
     for column_index, raw_header in enumerate(header):
         if _should_skip_header(raw_header):
@@ -119,6 +167,7 @@ def _parse_samples(frame: pd.DataFrame, batch_numbers: Sequence[str]) -> List[Sa
         column = frame.iloc[:, column_index]
         components = _extract_components(column)
         area_results = _extract_area_results(column)
+        sample_batches = list(sample_batch_lookup.get(normalized, []))
 
         sample = SampleQuantification(
             sample_id=normalized,
@@ -131,7 +180,7 @@ def _parse_samples(frame: pd.DataFrame, batch_numbers: Sequence[str]) -> List[Sa
             dilution=_coerce_number(_safe_get(column, DILUTION_ROW)),
             serving_mass_g=_coerce_number(_safe_get(column, SERVING_MASS_ROW)),
             servings_per_package=_coerce_number(_safe_get(column, SERVINGS_PER_PACKAGE_ROW)),
-            batch_numbers=list(batch_numbers),
+            batch_numbers=sample_batches,
         )
         samples.append(sample)
     return samples
@@ -170,7 +219,7 @@ def _normalize_sample_header(value: object) -> str | None:
     if not text:
         return None
 
-    replacements = text.replace(" ", "")
+    replacements = re.sub(r"\s+", "", text)
     match = re.match(r"(\d+(?:-\d+)?)", replacements)
     if match:
         return match.group(1)
@@ -200,12 +249,16 @@ def _extract_base_sample_id(sample_id: str) -> str:
 
 
 def _sanitize_batch_token(token: str) -> str | None:
+    match = re.search(r"BS[^0-9]*(\d+)", str(token), re.IGNORECASE)
+    if match:
+        return match.group(1)
+
     numeric = _coerce_number(token)
     if numeric is not None:
         if numeric.is_integer():
             return str(int(numeric))
         return str(numeric)
-    digits = re.sub(r"\D", "", token)
+    digits = re.sub(r"\D", "", str(token))
     return digits or None
 
 

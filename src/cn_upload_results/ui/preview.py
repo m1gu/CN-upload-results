@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -43,11 +44,20 @@ class PreviewDialog(QDialog):
         layout.setContentsMargins(30, 30, 30, 24)
         layout.setSpacing(18)
 
-        summary = QLabel(
-            f"Run {self._extraction.metadata.run_date} - {len(self._extraction.samples)} tests",
-            self,
-        )
+        metadata = self._extraction.metadata
+        base_text = f"Run {metadata.run_date} - {len(self._extraction.samples)} tests"
+        batch_plain, batch_rich = _format_batch_summary(metadata.batch_sample_map)
+        if batch_plain:
+            summary_plain = f"{base_text} - Batch numbers: {batch_plain}"
+            summary_rich = f"{base_text} - Batch numbers: {batch_rich}"
+        else:
+            summary_plain = summary_rich = base_text
+
+        summary = QLabel(summary_rich, self)
+        summary.setTextFormat(Qt.TextFormat.RichText)
         summary.setProperty("role", "hint")
+        summary.setWordWrap(True)
+        summary.setToolTip(summary_plain)
         layout.addWidget(summary)
 
         table = QTableWidget(self)
@@ -155,3 +165,19 @@ def _format_item(key: str, value: Optional[float]) -> QTableWidgetItem:
 def _format_numeric(value: float) -> str:
     text = f"{value:.6f}"
     return text.rstrip("0").rstrip(".")
+
+BATCH_HIGHLIGHT_COLOR = "#2ecc71"
+
+def _format_batch_summary(batch_map: Dict[str, List[str]]) -> tuple[str, str]:
+    if not batch_map:
+        return "", ""
+    plain_parts: List[str] = []
+    rich_parts: List[str] = []
+    for batch, sample_ids in batch_map.items():
+        samples_plain = ", ".join(f'"{sample_id}"' for sample_id in sample_ids)
+        plain_parts.append(f'"{batch}": [{samples_plain}]')
+
+        samples_rich = ", ".join(f"&quot;{sample_id}&quot;" for sample_id in sample_ids)
+        batch_span = f'<span style="color:{BATCH_HIGHLIGHT_COLOR};">{batch}</span>'
+        rich_parts.append(f'&quot;{batch_span}&quot;: [{samples_rich}]')
+    return ", ".join(plain_parts), ", ".join(rich_parts)
