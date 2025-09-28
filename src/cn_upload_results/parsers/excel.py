@@ -24,7 +24,7 @@ RESULTS_SHEET = "Results Transfer"
 BATCH_SHEET = "Blank Spike Recovery"
 BATCH_COLUMN_STEP = 2
 COMPONENT_ROW_OFFSET = 1  # zero-based index for first component row
-AREA_RESULT_ROW_OFFSET = 28  # zero-based index (row 29 in Excel)
+AREA_RESULT_ROW_OFFSET = 26  # zero-based index (row 27 in Excel) No modifiques este valor debe ser 26
 
 SAMPLE_MASS_ROW = 22  # zero-based index (row 23 in Excel)
 DILUTION_ROW = 23  # zero-based index (row 24 in Excel)

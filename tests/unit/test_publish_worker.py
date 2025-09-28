@@ -11,6 +11,7 @@ from PySide6.QtCore import QCoreApplication  # noqa: E402
 
 from cn_upload_results.domain.models import RunMetadata, SampleQuantification, WorkbookExtraction
 from cn_upload_results.ui.publish_worker import PublishWorker
+from cn_upload_results.workflows.upload import UploadOutcome
 
 
 def _make_extraction(sample_count: int = 2) -> WorkbookExtraction:
@@ -43,6 +44,7 @@ def _make_extraction(sample_count: int = 2) -> WorkbookExtraction:
 
 class _Settings:
     environment = "sandbox"
+    dry_run = False
 
 
 @pytest.fixture(autouse=True)
@@ -60,7 +62,7 @@ def test_publish_worker_success(monkeypatch, tmp_path):
 
     def fake_run_upload(path: Path):  # noqa: ANN001
         captured["run_upload_path"] = Path(path)
-        return extraction
+        return extraction, UploadOutcome(processed=[], skipped=[], dry_run=False)
 
     def fake_persist(**kwargs):  # noqa: ANN003
         captured["persist_kwargs"] = kwargs
@@ -82,8 +84,12 @@ def test_publish_worker_success(monkeypatch, tmp_path):
     worker.run()
 
     assert not errors
-    assert successes == [3]
-    assert progress_messages[:2] == ["Guardando en QBench…", "Guardando datos en Supabase…"]
+    assert len(successes) == 1
+    assert isinstance(successes[0], UploadOutcome)
+    assert not successes[0].dry_run
+    assert successes[0].total_processed_samples() == 0
+    assert successes[0].total_skipped_samples() == 0
+    assert progress_messages[:2] == ["Guardando en QBench...", "Guardando datos en Supabase..."]
     assert progress_messages[-1] == "Proceso completado"
     assert captured["run_upload_path"] == excel_path
     assert captured["persist_kwargs"]["created_by"] == "user@example.com"
@@ -114,7 +120,10 @@ def test_publish_worker_handles_supabase_error(monkeypatch, tmp_path):
 
     extraction = _make_extraction()
 
-    monkeypatch.setattr("cn_upload_results.ui.publish_worker.run_upload", lambda path: extraction)
+    monkeypatch.setattr(
+        "cn_upload_results.ui.publish_worker.run_upload",
+        lambda path: (extraction, UploadOutcome(processed=[], skipped=[], dry_run=False)),
+    )
     monkeypatch.setattr(
         "cn_upload_results.ui.publish_worker.build_default_qbench_payload", lambda extraction: {"status": "ok"}
     )

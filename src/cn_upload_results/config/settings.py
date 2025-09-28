@@ -23,6 +23,8 @@ class AppSettings(BaseSettings):
     qbench_token_url: HttpUrl | None = None
     qbench_client_id: str = ""
     qbench_client_secret: str = ""
+    skip_processed_tests: bool = True
+    dry_run: bool = False
     supabase_url: HttpUrl
     supabase_anon_key: str
     supabase_service_role_key: str

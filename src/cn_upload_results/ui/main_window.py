@@ -1,4 +1,5 @@
-﻿"""Main application window for orchestrating the workflow."""
+
+"""Main application window for orchestrating the workflow."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,6 +14,7 @@ from cn_upload_results.ui.loading_overlay import LoadingOverlay
 from cn_upload_results.ui.preview import PreviewDialog
 from cn_upload_results.ui.publish_worker import PublishWorker
 from cn_upload_results.ui.upload import UploadWidget
+from cn_upload_results.workflows.upload import UploadOutcome
 
 
 class MainWindow(QMainWindow):
@@ -42,7 +44,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "Proceso en curso",
-                "Ya hay una publicación en ejecución. Espere a que finalice antes de iniciar otra.",
+                "Ya hay una publicacion en ejecucion. Espere a que finalice antes de iniciar otra.",
             )
             return
 
@@ -60,7 +62,8 @@ class MainWindow(QMainWindow):
         if preview.exec() != PreviewDialog.Accepted:
             return
 
-        self._show_overlay("Guardando en QBench…")
+        overlay_message = "Simulando coincidencias con QBench..." if getattr(self._settings, "dry_run", False) else "Guardando en QBench..."
+        self._show_overlay(overlay_message)
         self._start_publish_worker()
 
     def _start_publish_worker(self) -> None:
@@ -91,14 +94,34 @@ class MainWindow(QMainWindow):
     def _handle_worker_progress(self, message: str) -> None:
         self._overlay.set_status(message)
 
-    def _handle_worker_success(self, sample_count: int) -> None:
+
+    def _handle_worker_success(self, outcome: UploadOutcome) -> None:
         self._overlay.set_status("Proceso completado")
         self._hide_overlay()
-        QMessageBox.information(
-            self,
-            "Publicacion completa",
-            f"Se subieron {sample_count} samples a QBench y se guardó el respaldo en Supabase.",
-        )
+
+        summary = outcome.summary_text()
+        if getattr(outcome, "dry_run", False):
+            message_lines = [
+                "Simulacion completada.",
+                f"Samples analizados: {outcome.total_processed_samples()}",
+                f"Samples omitidos: {outcome.total_skipped_samples()}",
+            ]
+            title = "Simulacion completada"
+        else:
+            message_lines = [
+                "Se completo la publicacion.",
+                f"Samples actualizados: {outcome.total_processed_samples()}",
+                f"Samples omitidos: {outcome.total_skipped_samples()}",
+            ]
+            title = "Publicacion completa"
+        message = "\n".join(message_lines)
+
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setText(message)
+        box.setInformativeText(summary)
+        box.exec()
 
     def _handle_worker_error(self, message: str) -> None:
         self._hide_overlay()
