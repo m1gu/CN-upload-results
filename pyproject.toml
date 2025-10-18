@@ -27,6 +27,7 @@ dev = [
     "pytest-asyncio>=0.23",
     "black>=24.4",
     "ruff>=0.5",
+    "pyinstaller>=6.6",
 ]
 
 [tool.black]

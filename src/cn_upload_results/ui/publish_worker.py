@@ -36,28 +36,34 @@ class PublishWorker(QObject):
 
     @Slot()
     def run(self) -> None:
+        active_settings = (
+            self._settings.model_copy()
+            if hasattr(self._settings, "model_copy")
+            else self._settings
+        )
+        dry_run = bool(getattr(active_settings, "dry_run", False))
         try:
             first_message = (
                 "Simulando coincidencias con QBench..."
-                if getattr(self._settings, "dry_run", False)
+                if dry_run
                 else "Guardando en QBench..."
             )
             self.progress.emit(first_message)
             try:
-                extraction, outcome = run_upload(self._excel_path)
+                extraction, outcome = run_upload(self._excel_path, settings=active_settings)
             except Exception as exc:  # noqa: BLE001
                 self.error.emit(f"Fallo al subir resultados a QBench: {exc}")
                 return
 
-            if getattr(self._settings, "dry_run", False):
+            if dry_run:
                 self.progress.emit("Simulacion completada")
             else:
                 try:
                     self.progress.emit("Guardando datos en Supabase...")
                     qbench_summary = build_default_qbench_payload(extraction)
-                    qbench_summary["environment"] = self._settings.environment
+                    qbench_summary["environment"] = active_settings.environment
                     persist_run_to_supabase(
-                        settings=self._settings,
+                        settings=active_settings,
                         extraction=extraction,
                         excel_path=self._excel_path,
                         qbench_payload=qbench_summary,

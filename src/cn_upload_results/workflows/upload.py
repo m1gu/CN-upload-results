@@ -11,7 +11,7 @@ from typing import Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 import httpx
 
 from cn_upload_results.clients.qbench import QBenchClient
-from cn_upload_results.config.settings import get_settings
+from cn_upload_results.config.settings import AppSettings, get_settings
 from cn_upload_results.domain.models import (
     AREA_RESULT_SUFFIX,
     COMPONENT_ORDER,
@@ -158,10 +158,11 @@ class UploadOutcome:
 # NOTE: Orchestrates the end-to-end workflow. It parses the Excel workbook,
 #       fetches candidate tests from QBench, resolves the matching plan, and
 #       either simulates or applies the updates while building an outcome summary.
-def run_upload(excel_path: Path) -> Tuple[WorkbookExtraction, UploadOutcome]:
+def run_upload(excel_path: Path, *, settings: AppSettings | None = None) -> Tuple[WorkbookExtraction, UploadOutcome]:
     """Execute the end-to-end upload pipeline against QBench."""
 
-    settings = get_settings()
+    if settings is None:
+        settings = get_settings()
     extraction = parse_workbook(excel_path)
     grouped_samples = _group_by_base_sample(extraction.samples)
     outcome = UploadOutcome(processed=[], skipped=[], dry_run=settings.dry_run)

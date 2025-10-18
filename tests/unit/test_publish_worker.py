@@ -60,8 +60,9 @@ def test_publish_worker_success(monkeypatch, tmp_path):
     extraction = _make_extraction(sample_count=3)
     captured = {}
 
-    def fake_run_upload(path: Path):  # noqa: ANN001
+    def fake_run_upload(path: Path, *, settings=None):  # noqa: ANN001, ANN003
         captured["run_upload_path"] = Path(path)
+        captured["run_upload_settings"] = settings
         return extraction, UploadOutcome(processed=[], skipped=[], dry_run=False)
 
     def fake_persist(**kwargs):  # noqa: ANN003
@@ -92,6 +93,7 @@ def test_publish_worker_success(monkeypatch, tmp_path):
     assert progress_messages[:2] == ["Guardando en QBench...", "Guardando datos en Supabase..."]
     assert progress_messages[-1] == "Proceso completado"
     assert captured["run_upload_path"] == excel_path
+    assert captured["run_upload_settings"].dry_run == worker._settings.dry_run
     assert captured["persist_kwargs"]["created_by"] == "user@example.com"
 
 
@@ -99,7 +101,7 @@ def test_publish_worker_handles_qbench_error(monkeypatch, tmp_path):
     excel_path = tmp_path / "input.xlsx"
     excel_path.write_text("dummy")
 
-    def fake_run_upload(path: Path):  # noqa: ANN001
+    def fake_run_upload(path: Path, *, settings=None):  # noqa: ANN001, ANN003
         raise RuntimeError("network down")
 
     monkeypatch.setattr("cn_upload_results.ui.publish_worker.run_upload", fake_run_upload)
@@ -122,7 +124,7 @@ def test_publish_worker_handles_supabase_error(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "cn_upload_results.ui.publish_worker.run_upload",
-        lambda path: (extraction, UploadOutcome(processed=[], skipped=[], dry_run=False)),
+        lambda path, *, settings=None: (extraction, UploadOutcome(processed=[], skipped=[], dry_run=False)),
     )
     monkeypatch.setattr(
         "cn_upload_results.ui.publish_worker.build_default_qbench_payload", lambda extraction: {"status": "ok"}

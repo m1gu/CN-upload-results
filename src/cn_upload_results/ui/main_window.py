@@ -7,7 +7,16 @@ from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QThread
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QPlainTextEdit
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QHBoxLayout,
+    QMainWindow,
+    QMessageBox,
+    QPlainTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from cn_upload_results.config.settings import AppSettings
 from cn_upload_results.parsers.excel import parse_workbook
@@ -28,16 +37,36 @@ class MainWindow(QMainWindow):
         self._settings = settings
         self._user_email = user_email
         self._current_file: Optional[Path] = None
-        self._upload_widget = UploadWidget(self)
+        self._container = QWidget(self)
+        root_layout = QVBoxLayout(self._container)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        self._upload_widget = UploadWidget(self._container)
         self._upload_widget.file_selected.connect(self._on_file_selected)
         self._upload_widget.process_requested.connect(self._on_process_requested)
-        self.setCentralWidget(self._upload_widget)
+        root_layout.addWidget(self._upload_widget)
+
+        footer_layout = QHBoxLayout()
+        footer_layout.setContentsMargins(24, 0, 24, 16)
+        footer_layout.addStretch()
+
+        self._dry_run_checkbox = QCheckBox("Dry run mode", self._container)
+        self._dry_run_checkbox.setChecked(bool(getattr(self._settings, "dry_run", False)))
+        self._dry_run_checkbox.toggled.connect(self._handle_dry_run_toggle)
+        self._dry_run_checkbox.setToolTip("Cuando esta activo no se enviaran cambios a QBench ni Supabase.")
+        footer_layout.addWidget(self._dry_run_checkbox)
+        root_layout.addLayout(footer_layout)
+
+        self.setCentralWidget(self._container)
         self.setWindowTitle("QBench CN Uploader")
         self.resize(640, 480)
 
         self._overlay = LoadingOverlay(self)
         self._publish_thread: Optional[QThread] = None
         self._publish_worker: Optional[PublishWorker] = None
+
+        self._handle_dry_run_toggle(self._dry_run_checkbox.isChecked())
 
     def _on_file_selected(self, path: Path) -> None:
         self._current_file = path
@@ -65,7 +94,12 @@ class MainWindow(QMainWindow):
         if preview.exec() != PreviewDialog.Accepted:
             return
 
-        overlay_message = "Simulando coincidencias con QBench..." if getattr(self._settings, "dry_run", False) else "Guardando en QBench..."
+        dry_run_active = self._dry_run_checkbox.isChecked()
+        if hasattr(self._settings, "dry_run"):
+            self._settings.dry_run = dry_run_active
+        overlay_message = (
+            "Simulando coincidencias con QBench..." if dry_run_active else "Guardando en QBench..."
+        )
         self._show_overlay(overlay_message)
         self._start_publish_worker()
 
@@ -97,6 +131,16 @@ class MainWindow(QMainWindow):
     def _handle_worker_progress(self, message: str) -> None:
         self._overlay.set_status(message)
 
+    def _handle_dry_run_toggle(self, checked: bool) -> None:
+        setattr(self._settings, "dry_run", checked)
+
+        dry_run_value = bool(getattr(self._settings, "dry_run", checked))
+        hint = (
+            "Modo simulacion activo: no se enviaran datos a QBench ni Supabase."
+            if dry_run_value
+            else "Modo simulacion desactivado: los cambios se aplicaran en QBench."
+        )
+        self.statusBar().showMessage(hint, 5000)
 
     def _handle_worker_success(self, outcome: UploadOutcome) -> None:
         self._overlay.set_status("Proceso completado")

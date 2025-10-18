@@ -64,5 +64,20 @@ tests/unit/        # pytest
 - `batch_codes text[]`, `sample_ids text[]`, `created_by text`, `created_at timestamptz`
 - `excel_payload jsonb`, `qbench_payload jsonb`, `notes text`
 
-Incluye RLS “authenticated access” para lectura/escritura de usuarios logueados.
+Incluye RLS "authenticated access" para lectura/escritura de usuarios logueados.
 
+## Build ejecutable standalone (Windows)
+Este proyecto incluye una especificacion de PyInstaller para generar un `CNUploadResults.exe` autocontenido. El ejecutable resultante integra Python, dependencias, librerias Qt y la configuracion `.env`, por lo que el usuario final solo necesita hacer doble click en el archivo.
+
+```powershell
+# 1) Activar tu entorno si aplica
+.\.venv\Scripts\Activate.ps1
+
+# 2) Instalar dependencias (incluye PyInstaller)
+pip install -r requirements.txt
+
+# 3) Generar el ejecutable de un solo archivo
+python build_exe.py --clean
+```
+
+La build deja el ejecutable en `dist/CNUploadResults.exe`. Empaqueta ese archivo y compartelo con el usuario final; al abrirlo se extrae automaticamente la configuracion y se inicia la interfaz grafica. Si modificas valores en `.env`, vuelve a ejecutar el script para regenerar el paquete con la configuracion actualizada.
