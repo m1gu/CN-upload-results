@@ -23,3 +23,5 @@ htmlcov/
 Thumbs.db
 *.xlsx
 *.xls
+*.XLSX
+*.json

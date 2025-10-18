@@ -2,11 +2,12 @@
 """Main application window for orchestrating the workflow."""
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QThread
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox
+from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QPlainTextEdit
 
 from cn_upload_results.config.settings import AppSettings
 from cn_upload_results.parsers.excel import parse_workbook
@@ -15,6 +16,8 @@ from cn_upload_results.ui.preview import PreviewDialog
 from cn_upload_results.ui.publish_worker import PublishWorker
 from cn_upload_results.ui.upload import UploadWidget
 from cn_upload_results.workflows.upload import UploadOutcome
+
+LOGGER = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -100,6 +103,35 @@ class MainWindow(QMainWindow):
         self._hide_overlay()
 
         summary = outcome.summary_text()
+        title, message = self._build_completion_message(outcome)
+
+        if getattr(outcome, "dry_run", False):
+            console_payload = f"{message}\n\n{summary}"
+            if LOGGER.isEnabledFor(logging.INFO):
+                LOGGER.info("%s", console_payload)
+            else:
+                # Logging INFO is disabled; echo the dry-run summary to stdout.
+                print(console_payload)
+
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setText(message)
+
+        details = QPlainTextEdit(box)
+        details.setPlainText(summary)
+        details.setReadOnly(True)
+        details.setMinimumHeight(220)
+        details.setMaximumHeight(320)
+        details.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+
+        layout = box.layout()
+        if layout is not None:
+            layout.addWidget(details, layout.rowCount(), 0, 1, layout.columnCount())
+
+        box.exec()
+
+    def _build_completion_message(self, outcome: UploadOutcome) -> tuple[str, str]:
         if getattr(outcome, "dry_run", False):
             message_lines = [
                 "Simulacion completada.",
@@ -114,14 +146,8 @@ class MainWindow(QMainWindow):
                 f"Samples omitidos: {outcome.total_skipped_samples()}",
             ]
             title = "Publicacion completa"
-        message = "\n".join(message_lines)
 
-        box = QMessageBox(self)
-        box.setWindowTitle(title)
-        box.setIcon(QMessageBox.Icon.Information)
-        box.setText(message)
-        box.setInformativeText(summary)
-        box.exec()
+        return title, "\n".join(message_lines)
 
     def _handle_worker_error(self, message: str) -> None:
         self._hide_overlay()

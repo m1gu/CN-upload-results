@@ -73,6 +73,8 @@ class SampleUploadPlan:
     available_cn: int
     available_ho: int
 
+    # NOTE: Helper that reports whether the plan contains actionable updates and no
+    #       blocking reason, simplifying later success checks.
     def is_successful(self) -> bool:
         return not self.reason and bool(self.updates)
 
@@ -107,12 +109,16 @@ class UploadOutcome:
     skipped: List[SampleUploadSummary]
     dry_run: bool
 
+    # NOTE: Returns how many samples were successfully processed in this run.
     def total_processed_samples(self) -> int:
         return len(self.processed)
 
+    # NOTE: Returns how many samples were skipped or aborted during the workflow.
     def total_skipped_samples(self) -> int:
         return len(self.skipped)
 
+    # NOTE: Produces a human-readable report summarizing processed and skipped samples,
+    #       including dry-run notices, column assignments, and reasons for omissions.
     def summary_text(self) -> str:
         if not self.processed and not self.skipped:
             return "No se realizaron actualizaciones."
@@ -148,6 +154,10 @@ class UploadOutcome:
         return "\n".join(lines)
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Orchestrates the end-to-end workflow. It parses the Excel workbook,
+#       fetches candidate tests from QBench, resolves the matching plan, and
+#       either simulates or applies the updates while building an outcome summary.
 def run_upload(excel_path: Path) -> Tuple[WorkbookExtraction, UploadOutcome]:
     """Execute the end-to-end upload pipeline against QBench."""
 
@@ -220,6 +230,9 @@ def run_upload(excel_path: Path) -> Tuple[WorkbookExtraction, UploadOutcome]:
     return extraction, outcome
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Groups SampleQuantification objects by base sample id and orders each list
+#       by test index so later matching logic can rely on a deterministic sequence.
 def _group_by_base_sample(samples: Iterable[SampleQuantification]) -> Dict[str, List[SampleQuantification]]:
     grouped: Dict[str, List[SampleQuantification]] = defaultdict(list)
     for sample in samples:
@@ -229,6 +242,10 @@ def _group_by_base_sample(samples: Iterable[SampleQuantification]) -> Dict[str, 
     return dict(grouped)
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Builds the decision plan for a single sample. It analyses available CN/HO
+#       tests, validates Excel columns, determines assignments, and records reasons
+#       whenever the sample cannot be uploaded.
 def _resolve_upload_plan(
     *,
     base_sample_id: str,
@@ -383,6 +400,10 @@ def _resolve_upload_plan(
 
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Filters raw QBench tests by assay and state. CN tests must also share a
+#       batch with the Excel data when possible, while HO tests only need the
+#       state check. Fallback lists preserve candidates when batches do not match.
 def _collect_available_tests(
     raw_tests: Sequence[Dict[str, object]],
     excel_batches: set[str],
@@ -435,6 +456,9 @@ def _collect_available_tests(
     return results
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Extracts and normalizes all batch identifiers present in the Excel columns
+#       so they can be compared against the batches reported by QBench.
 def _collect_excel_batches(samples: Iterable[SampleQuantification]) -> set[str]:
     batches: set[str] = set()
     for sample in samples:
@@ -445,10 +469,16 @@ def _collect_excel_batches(samples: Iterable[SampleQuantification]) -> set[str]:
     return batches
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Converts any batch representation into a trimmed string, ensuring that
+#       comparisons between Excel and QBench batches remain consistent.
 def _normalize_batch(value: object) -> str:
     return str(value).strip()
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Derives the replicate index for a column using its sample id. Suffixes
+#       like "-1" or "-2" override the spreadsheet order so HO indices align.
 def _extract_replicate_index(sample: SampleQuantification, base_sample_id: str) -> int:
     sample_id = sample.sample_id
     if sample_id == base_sample_id:
@@ -460,6 +490,9 @@ def _extract_replicate_index(sample: SampleQuantification, base_sample_id: str) 
     return sample.test_index
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Interprets a worksheet field value from QBench and decides whether it is
+#       effectively empty (None, zero, or blank string), regardless of format.
 def _is_blank_worksheet_value(value: object) -> bool:
     if value is None:
         return True
@@ -475,6 +508,9 @@ def _is_blank_worksheet_value(value: object) -> bool:
         return False
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Checks that every field we intend to populate in QBench still contains only
+#       blank values, preventing accidental overwrites of previously uploaded data.
 def _worksheet_fields_are_empty(worksheet_data: object, keys: Iterable[str]) -> bool:
     if not isinstance(worksheet_data, dict):
         return True
@@ -495,6 +531,10 @@ def _worksheet_fields_are_empty(worksheet_data: object, keys: Iterable[str]) -> 
 
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Iterates over the scheduled updates, builds payloads, enforces the
+#       worksheet guards, optionally performs QBench PATCH calls, and tracks
+#       which columns were applied or skipped.
 def _execute_plan(
     qbench: QBenchClient,
     plan: SampleUploadPlan,
@@ -537,15 +577,39 @@ def _execute_plan(
     return applied, skipped_columns, skip_reason
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Sends the worksheet PATCH request to QBench and logs failures so that the
+#       caller can surface the error to the UI.
 def _send_worksheet_update(qbench: QBenchClient, qbench_test: Dict[str, object], data: Dict[str, str]) -> None:
     test_id = qbench_test.get("id")
     try:
         qbench.update_test_worksheet(test_id, data=data)
+    except httpx.HTTPStatusError as exc:
+        response = exc.response
+        status = response.status_code if response is not None else None
+        body = response.text if response is not None else ""
+        if status == httpx.codes.BAD_REQUEST:
+            LOGGER.warning(
+                "QBench devolvio 400 al actualizar worksheet para test %s; se continua. Detalle: %s",
+                test_id,
+                body[:500],
+            )
+            return
+        LOGGER.exception(
+            "Error HTTP al actualizar worksheet para test %s (status=%s, body=%s)",
+            test_id,
+            status,
+            body[:500],
+        )
+        raise
     except httpx.HTTPError:
-        LOGGER.exception("Failed to update worksheet for test %s", test_id)
+        LOGGER.exception("Error de red al actualizar worksheet para test %s", test_id)
         raise
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Translates a SampleQuantification into the dictionary expected by a CN
+#       worksheet, covering metadata, components, and area results.
 def _build_cannabinoid_payload(sample: SampleQuantification) -> Dict[str, str]:
     payload: Dict[str, str] = {}
 
@@ -576,6 +640,9 @@ def _build_cannabinoid_payload(sample: SampleQuantification) -> Dict[str, str]:
     return payload
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Assembles the HO worksheet payload only for the indices that will be updated,
+#       enabling partial corrections when a subset of injections must be rewritten.
 def _build_homogeneity_payload_for_indices(
     samples: List[SampleQuantification],
     indices: List[int],
@@ -586,6 +653,9 @@ def _build_homogeneity_payload_for_indices(
     return payload
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Adds the per-index HO fields (mass, dilution, components) into the payload
+#       using the formatted naming convention expected by QBench.
 def _populate_homogeneity_fields(
     payload: Dict[str, str],
     sample: SampleQuantification,
@@ -602,6 +672,9 @@ def _populate_homogeneity_fields(
         payload[f"{component}_{index}"] = _format_number(value)
 
 
+# -----------------------------------------------------------------------------
+# NOTE: Formats numeric values in a stable way, trimming trailing zeros and decimal
+#       points so the worksheet payload matches QBench expectations.
 def _format_number(value: float) -> str:
     text = f"{value:.6f}"
     return text.rstrip("0").rstrip(".")
